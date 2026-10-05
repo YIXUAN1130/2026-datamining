@@ -1,0 +1,67 @@
+import os
+import sys
+import urllib.request
+
+# 解决 Windows 环境下 PySpark 找不到 Python 解释器的问题
+os.environ["PYSPARK_PYTHON"] = sys.executable
+os.environ["PYSPARK_DRIVER_PYTHON"] = sys.executable
+
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import col
+
+spark = SparkSession.builder.appName("Q3_WorldHappiness").getOrCreate()
+spark.sparkContext.setLogLevel("ERROR")
+
+# 1. 2015~2019년 데이터 다운로드
+base_url = "https://raw.githubusercontent.com/nongaussian/class-2024-datamining/main/data/World%20Hapiness%20Report/"
+years = [2015, 2016, 2017, 2018, 2019]
+
+for year in years:
+    urllib.request.urlretrieve(f"{base_url}{year}.csv", f"{year}.csv")
+
+# 2. 연도별 컬럼명 대응 및 Dataframe 생성
+def load_year_df(year):
+    df = spark.read.csv(f"{year}.csv", header=True, inferSchema=True)
+    
+    # 国家列名兼容处理
+    country_col = "Country" if "Country" in df.columns else "Country or region"
+    
+    # 幸福分数列名兼容处理
+    if "Happiness Score" in df.columns:
+        score_col = "Happiness Score"
+    elif "Happiness.Score" in df.columns:
+        score_col = "Happiness.Score"
+    else:
+        score_col = "Score"
+        
+    return df.select(
+        col(country_col).alias("Country"), 
+        col(score_col).alias(f"Score_{year}")
+    )
+
+df_2015 = load_year_df(2015)
+df_2016 = load_year_df(2016)
+df_2017 = load_year_df(2017)
+df_2018 = load_year_df(2018)
+df_2019 = load_year_df(2019)
+
+# 3. 5년치 데이터 Inner Join (确保5年都有记录的国家)
+merged_df = (
+    df_2015
+    .join(df_2016, "Country")
+    .join(df_2017, "Country")
+    .join(df_2018, "Country")
+    .join(df_2019, "Country")
+)
+
+# 4. 5년 동안 행복지수가 지속적으로 상승하거나 전년도 이상(>=)인 국가 필터링
+increasing_df = merged_df.filter(
+    (col("Score_2016") >= col("Score_2015")) &
+    (col("Score_2017") >= col("Score_2016")) &
+    (col("Score_2018") >= col("Score_2017")) &
+    (col("Score_2019") >= col("Score_2018"))
+)
+
+# 5. 결과 출력 (Spark Action)
+print("Q3. 5년 동안 행복지수가 지속적으로 상승하거나 적어도 전년도와 같은 나라:")
+increasing_df.select("Country", "Score_2015", "Score_2016", "Score_2017", "Score_2018", "Score_2019").show(truncate=False)
