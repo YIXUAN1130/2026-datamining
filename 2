@@ -1,0 +1,55 @@
+import requests
+from pyspark import SparkContext, SparkConf
+
+sc = SparkContext.getOrCreate()
+
+url = "https://raw.githubusercontent.com/nongaussian/class-2024-datamining/main/quiz/int-pair-input.txt"
+local_file_name = "int-pair-input.txt"
+
+# Download the file if it doesn't exist locally
+try:
+    with open(local_file_name, 'r') as f:
+        pass # File exists, no need to download
+except FileNotFoundError:
+    print(f"Downloading {url} to {local_file_name}...")
+    response = requests.get(url)
+    response.raise_for_status() # Check if the HTTP request was successful
+    with open(local_file_name, 'wb') as f:
+        f.write(response.content)
+    print("Download complete.")
+
+raw_rdd = sc.textFile(local_file_name)
+
+# 解析每行转为整数元组 (a,b)
+# Modified to clean the string by removing parentheses and commas before splitting
+pair_rdd = raw_rdd.map(lambda line: line.strip().replace('(', '').replace(')', '').replace(',', '').split())\
+                  .map(lambda arr: (int(arr[0]), int(arr[1])))
+
+# ① 첫번째 정수쌍의 첫번째 원소 → take(1) 返回list，仅取第一条
+first_pair_first = pair_rdd.take(1)[0][0]
+
+# ② 모든 첫번째 원소 최댓값
+first_only_rdd = pair_rdd.map(lambda x: x[0])
+max_val = first_only_rdd.max()
+
+# ③ 모든 첫번째 원소 최솟값
+min_val = first_only_rdd.min()
+
+# ④ 첫 원소=1 인 쌍 개수
+count1 = pair_rdd.filter(lambda t: t[0]==1).count()
+
+# ⑤ 첫 원소=2 인 쌍 개수
+count2 = pair_rdd.filter(lambda t: t[0]==2).count()
+
+total = first_pair_first + max_val + min_val + count1 + count2
+
+print(f"1.첫쌍 첫원소:{first_pair_first}")
+print(f"2.최댓값:{max_val}")
+print(f"3.최솟값:{min_val}")
+print(f"4.첫원소=1 개수:{count1}")
+print(f"5.첫원소=2 개수:{count2}")
+print("5개 숫자의 합 =", total)
+
+# Do not stop the SparkContext here, as it might be needed by other cells.
+# It's generally good practice to keep the context alive across the notebook
+# when using getOrCreate().
