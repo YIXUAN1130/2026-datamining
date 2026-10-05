@@ -1,0 +1,30 @@
+import urllib.request
+from pyspark.sql import SparkSession
+
+# Spark Session 및 Context 설정
+spark = SparkSession.builder.appName("Q1_TwoHeadWord").getOrCreate()
+sc = spark.sparkContext
+
+# 데이터 로드
+url = "https://raw.githubusercontent.com/nongaussian/class-2024-datamining/main/quiz/sherlock.txt"
+urllib.request.urlretrieve(url, "sherlock.txt")
+rdd = sc.textFile("sherlock.txt")
+
+# Spark 연산으로 처리
+# 1. 공백 기준 단어 분할
+# 2. 길이 2 초과 단어 필터링
+# 3. 소문자 변환 후 앞 2글자 추출 및 (2-head, 1) 매핑
+# 4. reduceByKey로 개수 합산
+# 5. 빈도가 32 미만인 2-head word 필터링
+# 6. 빈도수만 추출하여 sum()으로 전체 합산
+result_q1 = (
+    rdd.flatMap(lambda line: line.split())
+    .filter(lambda word: len(word) > 2)
+    .map(lambda word: (word[:2].lower(), 1))
+    .reduceByKey(lambda a, b: a + b)
+    .filter(lambda pair: pair[1] < 32)
+    .map(lambda pair: pair[1])
+    .sum()
+)
+
+print(f"Q1 최종 결과값: {result_q1}")
